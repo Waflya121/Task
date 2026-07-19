@@ -1,0 +1,152 @@
+{
+  "info": {
+    "name": "Nova Auth API",
+    "description": "Регистрация через email, вход, подтверждение email, восстановление пароля, профиль. Базовый URL берётся из переменной {{baseUrl}} (по умолчанию http://localhost:5000). Токен после /auth/register или /auth/login автоматически сохраняется в переменную {{accessToken}} и используется в защищённых запросах.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "confirmationToken", "value": "", "type": "string" },
+    { "key": "resetToken", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Иван\",\n  \"lastName\": \"Иванов\",\n  \"email\": \"ivan@example.com\",\n  \"password\": \"Passw0rd!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "  pm.test('accessToken получен', () => pm.expect(json.accessToken).to.be.a('string'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ivan@example.com\",\n  \"password\": \"Passw0rd!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "  pm.test('accessToken получен', () => pm.expect(json.accessToken).to.be.a('string'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm Email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/confirm", "host": ["{{baseUrl}}"], "path": ["auth", "confirm"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{confirmationToken}}\"\n}"
+            },
+            "description": "Значение token берётся из ссылки в письме (http://localhost:3000/confirm?token=...) — вставьте его в переменную confirmationToken."
+          }
+        },
+        {
+          "name": "Resend Confirmation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/resend-confirmation", "host": ["{{baseUrl}}"], "path": ["auth", "resend-confirmation"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ivan@example.com\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["auth", "forgot-password"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ivan@example.com\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/reset-password", "host": ["{{baseUrl}}"], "path": ["auth", "reset-password"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"password\": \"NewPassw0rd!\"\n}"
+            },
+            "description": "Значение token берётся из ссылки в письме сброса пароля (http://localhost:3000/reset-password?token=...) — вставьте его в переменную resetToken."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] }
+          }
+        },
+        {
+          "name": "Update Me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Пётр\",\n  \"lastName\": \"Петров\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+databases:
+  - name: nova-db
+    databaseName: nova_db
+    user: nova_user
+    plan: free
+
+services:
+  # --- Backend: NestJS API ---
+  - type: web
+    name: nova-server
+    runtime: node
+    plan: free
+    rootDir: server
+    # --include=dev обязателен: Render выставляет NODE_ENV=production при сборке,
+    # а без этого флага npm install пропустит devDependencies (typescript,
+    # @nestjs/cli, ts-node) — без них не соберётся ни `nest build`, ни миграции.
+    buildCommand: npm install --include=dev && npm run build
+    # Миграции запускаются перед стартом приложения, а не в buildCommand —
+    # так гарантированно, что база уже доступна к этому моменту.
+    startCommand: npm run migration:run && npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_HOST
+        fromDatabase:
+          name: nova-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: nova-db
+          property: port
+      - key: DB_USER
+        fromDatabase:
+          name: nova-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: nova-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: nova-db
+          property: database
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # Заполняются вручную в дашборде Render после первого деплоя —
+      # URL фронтенда станет известен только после его собственного деплоя.
+      - key: FRONTEND_URL
+        sync: false
+      # ВНИМАНИЕ: Render на бесплатном плане блокирует исходящие SMTP-порты,
+      # поэтому письма с этими настройками НЕ будут отправляться из nova-server
+      # на Render (сработает только при локальном запуске). Заполните, если
+      # всё равно хотите попробовать, либо перейдите на HTTP API провайдера
+      # (Resend/SendGrid/Brevo и т.п.), верифицировав там отправителя.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
+  # --- Frontend: статическая сборка Vite ---
+  - type: web
+    env: static
+    name: nova-client
+    rootDir: client
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      # Заполняется вручную после первого деплоя backend-сервиса (нужен его URL).
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      # SPA-роутинг: все пути отдают index.html, React Router разбирается сам.
+      - type: rewrite
+        source: /*
+        destination: /index.html

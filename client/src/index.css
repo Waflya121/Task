@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-slate-50 font-sans text-slate-900 antialiased;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply tracking-tightest;
+  }
+
+  /* Всегда видимое кольцо фокуса для клавиатурной навигации */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-end ring-offset-2 ring-offset-white;
+  }
+}
+
+/* Уважаем системную настройку "уменьшить движение" */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
