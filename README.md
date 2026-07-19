@@ -4,6 +4,9 @@
 регистрацией/входом по email и паролю, подтверждением email по ссылке, восстановлением
 пароля и личным кабинетом.
 
+**Живая версия:** http://213.189.219.168 (VPS, без своего домена — по HTTP;
+почта на момент написания — см. раздел «Деплой на VPS» про UniSender).
+
 ```
 Задание/
 ├── client/   React + TypeScript + Vite + Tailwind (порт 3000)
@@ -15,15 +18,15 @@
 **Клиент:** React 18, TypeScript, Vite, React Router v6, Axios, Tailwind CSS,
 React Hook Form + Zod, Framer Motion, react-hot-toast.
 
-**Сервер:** NestJS, TypeORM, PostgreSQL, JWT (passport-jwt), bcrypt, Nodemailer
-(SMTP + Handlebars-шаблоны), class-validator, @nestjs/throttler, helmet, Swagger.
+**Сервер:** NestJS, TypeORM, PostgreSQL, JWT (passport-jwt), bcrypt, UniSender
+(HTTP API + Handlebars-шаблоны), class-validator, @nestjs/throttler, helmet, Swagger.
 
 ## Требования
 
 - Node.js 18+ и npm
 - PostgreSQL 16 (или Docker, чтобы поднять его одной командой)
-- SMTP-аккаунт для отправки писем (Gmail + [App Password](https://support.google.com/accounts/answer/185833),
-  либо Mailtrap/Ethereal для локальной разработки без реальной доставки)
+- Аккаунт [UniSender](https://unisender.com) с верифицированным доменом-отправителем
+  для отправки писем — см. ниже
 
 ## Быстрый запуск
 
@@ -44,17 +47,21 @@ cp server/.env.example server/.env
 cp client/.env.example client/.env
 ```
 
-В `server/.env` укажите реальные данные PostgreSQL и SMTP. Для Gmail `SMTP_PASS`
-должен быть [App Password](https://support.google.com/accounts/answer/185833), а не
-обычный пароль аккаунта (нужно включить двухэтапную аутентификацию, затем создать
-пароль на [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)).
-`MAIL_FROM` должен совпадать со `SMTP_USER` — иначе Gmail отклоняет письмо или
-молча подменяет обратный адрес.
+В `server/.env` укажите реальные данные PostgreSQL и почты. Письма отправляются
+через HTTP API [UniSender](https://unisender.com), а не через SMTP: SMTP-порты
+блокируются практически на всех бюджетных хостингах (проверено и на Render, и
+на обычном VPS) как защита от спама, а HTTPS-запросы к API такие блокировки не
+встречают.
 
-**Важно:** локально всё работает на любом плане. На Render же бесплатный план
-блокирует исходящие SMTP-порты (465/587) как защиту от спама — для реальной
-отправки писем с задеплоенного сервера нужен как минимум план **Starter**
-($7/мес), на нём порты открыты (см. раздел «Деплой» ниже).
+1. Зарегистрируйтесь на [unisender.com](https://unisender.com).
+2. Верифицируйте домен-отправитель: **Настройки → Домены** — добавьте домен и
+   пропишите выданные SPF/DKIM-записи в DNS этого домена (у своего регистратора).
+   Без верификации домена UniSender откажется отправлять письма на чужие адреса
+   (ответит `"Use your custom domain email with authentication"`).
+3. Создайте API-ключ и впишите в `UNISENDER_API_KEY`.
+4. `SENDER_EMAIL` — адрес на верифицированном домене (например, `no-reply@your-domain.ru`).
+5. `UNISENDER_LIST_ID` — ID любого списка контактов в аккаунте (классический
+   API UniSender требует list_id даже для одиночных писем).
 
 ### 3. Поднять PostgreSQL
 
@@ -106,12 +113,10 @@ postinstall-скриптов).
 (`MailService`) в логах сервера. Если письмо не пришло, первым делом смотрите
 именно туда.
 
-Важно: на **бесплатном** плане Render исходящие SMTP-порты (465/587)
-заблокированы как защита от спама — попытка подключения будет падать по
-таймауту независимо от правильности данных. Это ограничение сети хостинга,
-не баг кода. На плане **Starter** и выше порты открыты, письма отправляются
-нормально — см. [changelog Render](https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports).
-Локально работает на любом плане.
+Если письмо не приходит совсем — проверьте, что `SENDER_EMAIL` действительно
+верифицирован в UniSender как отправитель на подтверждённом домене (Settings →
+Domains). Неверифицированный адрес UniSender отклоняет сразу с понятной
+ошибкой в логе.
 
 ## Как это работает
 
@@ -164,52 +169,100 @@ client/src/
 server/src/
 ├── auth/             контроллер, сервис, DTO, JWT/local стратегии
 ├── users/             контроллер, сервис, entity User
-├── mail/              Nodemailer (SMTP) + Handlebars-шаблоны писем
+├── mail/              UniSender (HTTP API) + Handlebars-шаблоны писем
 ├── common/            guards, decorators, exception filter, logging interceptor
 ├── config/            типизированная конфигурация + Joi-валидация env
 └── migrations/         миграции TypeORM (таблица users)
 ```
 
-## Деплой на Render (публичная ссылка)
+## Деплой на VPS (текущий вариант, публичная ссылка)
 
-В репозитории есть `render.yaml` — blueprint, который поднимает всё нужное одним
-деплоем: PostgreSQL, backend (Node web-сервис) и frontend (статическая сборка Vite).
+Приложение развёрнуто на обычном VPS (Ubuntu 24.04), где фронтенд и бэкенд
+живут **на одном origin** через один Nginx — так проще всего избежать проблемы
+mixed content (браузеры блокируют запросы с HTTPS-страницы на HTTP-адрес, а без
+своего домена+TLS получить HTTPS для бэкенда нельзя; на одном origin эта
+проблема просто не возникает).
+
+Схема:
+
+```
+Nginx (порт 80)
+├── /            → статика client/dist (собран `vite build`, SPA fallback на index.html)
+├── /auth/*      → proxy_pass на Node-сервер (127.0.0.1:5000)
+├── /users/*     → proxy_pass на Node-сервер
+└── /api/*       → proxy_pass на Node-сервер (Swagger)
+
+Node-сервер (nova-server.service, systemd) — 127.0.0.1:5000
+PostgreSQL (локально на том же сервере)
+```
+
+Ключевые моменты настройки:
+
+- Клиент собирается с `VITE_API_URL=` (пустая строка) — все запросы идут
+  относительным путём на тот же origin, что и сама страница.
+- `server/src/main.ts` вызывает `app.set('trust proxy', 1)` — иначе за Nginx
+  Express видел бы все запросы с одного IP (127.0.0.1), и rate-limiting
+  (`ThrottlerGuard`) считал бы всех пользователей одним клиентом.
+- Backend запускается как systemd-сервис (`/etc/systemd/system/nova-server.service`,
+  `User=nova`, `Restart=always`), логи пишутся в файл (`/var/log/nova-server.log`) —
+  на некоторых образах Ubuntu journald не сохраняет журналы (`journalctl`
+  показывает "No journal files were found"), файл-лог работает всегда.
+- Каталог с собранным клиентом должен быть доступен на чтение пользователю
+  Nginx (`www-data`): если домашняя папка системного пользователя приложения
+  создана с правами `750` (по умолчанию для `useradd --system`), Nginx получит
+  `500 Internal Server Error` — нужно `chmod o+x` на родительский каталог.
+- `prebuild` в `server/package.json` чистит и `dist`, и `tsconfig.tsbuildinfo` —
+  без этого `tsc` в некоторых случаях считает часть файлов "неизменными" по
+  старому кэшу и не записывает их в свежесобранный `dist`, из-за чего сервер
+  падает на старте с `Cannot find module './app.module'`.
+
+### Развёртывание на новом VPS с нуля (кратко)
+
+```bash
+# Node.js 20 LTS, PostgreSQL, Nginx
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs postgresql nginx git
+
+# База данных
+sudo -u postgres createuser --login --pwprompt nova_user
+sudo -u postgres createdb -O nova_user nova_db
+
+# Код
+git clone https://github.com/Waflya121/Task.git /opt/app
+cd /opt/app/server && cp .env.example .env   # заполнить реальными значениями
+npm install --include=dev && npm run build && npm run migration:run
+
+cd /opt/app/client && echo "VITE_API_URL=" > .env
+npm install && npm run build
+
+# systemd-сервис для бэкенда — см. пример unit-файла выше по структуре
+# Nginx — см. схему выше (статика + proxy_pass на /auth, /users, /api)
+```
+
+Полный набор команд длиннее (systemd unit, конфиг Nginx, ufw, swap для слабых
+VPS) — при необходимости попросите собрать их в скрипт.
+
+## Альтернатива: деплой на Render
+
+В репозитории также есть `render.yaml` — blueprint, поднимающий PostgreSQL,
+backend и frontend как отдельные управляемые сервисы Render (вместо одного
+VPS). Подходит, если не хочется администрировать сервер самостоятельно.
 
 1. Зарегистрируйтесь на [render.com](https://render.com) (бесплатно, через GitHub).
-2. **New → Blueprint** → выберите этот репозиторий (`Waflya121/Task`) → Render
-   найдёт `render.yaml` и предложит создать 3 ресурса: `nova-db`, `nova-server`,
-   `nova-client`. Подтвердите — начнётся первый деплой (может занять 5–10 минут:
-   у бесплатного плана Node-сервисы поднимаются не мгновенно).
-3. После того как **`nova-server`** задеплоится, скопируйте его URL (вида
-   `https://nova-server-xxxx.onrender.com`).
-4. После того как **`nova-client`** задеплоится, скопируйте его URL (вида
-   `https://nova-client-xxxx.onrender.com`).
-5. В дашборде Render зайдите в **nova-server → Environment** и заполните:
-   - `FRONTEND_URL` = URL из шага 4
-   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` — как в
-     `server/.env.example`.
+2. **New → Blueprint** → выберите этот репозиторий → Render найдёт `render.yaml`
+   и предложит создать 3 ресурса: `nova-db`, `nova-server`, `nova-client`.
+3. После деплоя `nova-server` и `nova-client` скопируйте их URL из дашборда.
+4. **nova-server → Environment**: `FRONTEND_URL` = URL клиента,
+   `UNISENDER_API_KEY`, `UNISENDER_LIST_ID`, `SENDER_EMAIL` — как в `.env.example`.
+5. **nova-client → Environment**: `VITE_API_URL` = URL сервера.
+6. **Manual Deploy → Deploy latest commit** на обоих сервисах (фронту обязательна
+   пересборка — `VITE_API_URL` вшивается в бандл на этапе сборки).
 
-   Затем зайдите в **nova-client → Environment** и заполните:
-   - `VITE_API_URL` = URL из шага 3
-
-   **Важно про почту:** `render.yaml` уже поднимает `nova-server` на платном
-   плане **Starter** ($7/мес) — это необходимо, чтобы вообще открылись
-   исходящие SMTP-порты (на бесплатном плане Render их блокирует, независимо
-   от правильности SMTP-данных). Если сервис уже был создан раньше на
-   бесплатном плане, поменяйте план вручную: **nova-server → Settings →
-   Instance Type**.
-
-6. Нажмите **Manual Deploy → Deploy latest commit** на обоих сервисах, чтобы
-   применились новые переменные (для статического сайта `VITE_API_URL` должен
-   попасть в сборку, поэтому фронт обязательно нужно пересобрать после того как
-   переменная задана — недостаточно просто перезапустить).
-7. Готово — `nova-client`-ссылка и есть публичный сайт.
-
-Бесплатный план Render "усыпляет" неактивные сервисы — первый запрос после
-простоя может обрабатываться 30–60 секунд, пока сервис поднимается. Free
-PostgreSQL на Render также ограничен по времени жизни (см. условия Render) —
-для долгосрочного использования потребуется платный план либо переезд на другую
-управляемую БД (Supabase/Neon).
+Поскольку почта идёт через HTTP API UniSender (а не SMTP), блокировка
+SMTP-портов на бесплатном плане Render значения не имеет — деплой работает
+на free-плане без дополнительных затрат. Free PostgreSQL на Render ограничен
+по времени жизни — для долгосрочного использования нужен платный план либо
+переезд на другую управляемую БД (Supabase/Neon).
 
 ## Известные особенности
 

@@ -1,13 +1,19 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { lookup as dnsLookup } from 'dns/promises';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { compile, type TemplateDelegate } from 'handlebars';
-import * as nodemailer from 'nodemailer';
 import { AppConfig } from '../config/configuration';
 
 type TemplateName = 'welcome' | 'reset-password';
+
+const UNISENDER_ENDPOINT = 'https://api.unisender.com/ru/api/sendEmail';
+
+interface UniSenderResponse {
+  result?: { email_id?: number | number[] };
+  error?: string;
+  code?: string;
+}
 
 @Injectable()
 export class MailService {
@@ -26,48 +32,6 @@ export class MailService {
     return this.configService.get('frontendUrl', { infer: true });
   }
 
-  private get from(): string {
-    return this.configService.get('mail', { infer: true }).from;
-  }
-
-  // Nodemailer/smtp-connection резолвит хост через dns.resolve() (прямой
-  // запрос к DNS-серверу через c-ares), а не через dns.lookup() (системный
-  // резолвер ОС). За VPN/proxy-клиентами с перехватом DNS на уровне ОС
-  // (Clash/FlClash и т.п. в режиме fake-ip) это часто означает, что
-  // dns.lookup() резолвит мгновенно, а dns.resolve() виснет по таймауту —
-  // поэтому резолвим IP сами и подключаемся по нему, передавая исходное имя
-  // хоста в tls.servername, чтобы TLS-сертификат по-прежнему проверялся
-  // корректно (SNI).
-  private async createTransporter(): Promise<nodemailer.Transporter> {
-    const mail = this.configService.get('mail', { infer: true });
-    let host = mail.smtpHost;
-    try {
-      const resolved = await dnsLookup(mail.smtpHost);
-      host = resolved.address;
-    } catch (error) {
-      this.logger.warn(
-        `Не удалось предварительно резолвить ${mail.smtpHost} через dns.lookup, ` +
-          `используем исходный хост: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-      );
-    }
-    return nodemailer.createTransport({
-      host,
-      port: mail.smtpPort,
-      // 465 — неявный TLS; остальные порты (587) используют STARTTLS.
-      secure: mail.smtpPort === 465,
-      auth: mail.smtpUser ? { user: mail.smtpUser, pass: mail.smtpPass } : undefined,
-      tls: { servername: mail.smtpHost },
-      // Письмо отправляется в фоне и не блокирует ответ API (см. auth.service.ts),
-      // поэтому можно позволить себе щедрый таймаут — реальное SMTP-рукопожатие
-      // иногда занимает больше минуты, а не секунды (медленная сеть/прокси).
-      connectionTimeout: 120_000,
-      greetingTimeout: 60_000,
-      socketTimeout: 120_000,
-    });
-  }
-
   private renderTemplate(
     name: TemplateName,
     context: Record<string, unknown>,
@@ -82,6 +46,38 @@ export class MailService {
       this.templateCache.set(name, template);
     }
     return template(context);
+  }
+
+  // Отправка письма через HTTP API UniSender (POST-запрос на api.unisender.com),
+  // а не через SMTP — обходит блокировку исходящих SMTP-портов, которая
+  // встречается практически на всех бюджетных хостингах (Render, VPS и т.д.).
+  private async send(to: string, subject: string, html: string): Promise<void> {
+    const mail = this.configService.get('mail', { infer: true });
+    const params = new URLSearchParams({
+      format: 'json',
+      api_key: mail.unisenderApiKey,
+      email: to,
+      sender_name: mail.senderName,
+      sender_email: mail.senderEmail,
+      subject,
+      body: html,
+      list_id: mail.unisenderListId,
+    });
+
+    const response = await fetch(UNISENDER_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+
+    const json = (await response.json()) as UniSenderResponse;
+    // UniSender почти всегда отвечает 200 даже при ошибке — реальный статус
+    // нужно смотреть в теле ответа (`error`/`code`), а не по HTTP-коду.
+    if (!response.ok || json.error) {
+      throw new Error(
+        `UniSender API ${response.status}: ${json.error ?? JSON.stringify(json)}`,
+      );
+    }
   }
 
   // Приветственное письмо с подтверждением email.
@@ -99,13 +95,7 @@ export class MailService {
         confirmUrl: `${this.frontendUrl}/confirm?token=${token}`,
         token,
       });
-      const transporter = await this.createTransporter();
-      await transporter.sendMail({
-        from: this.from,
-        to,
-        subject: `Добро пожаловать в ${this.serviceName}!`,
-        html,
-      });
+      await this.send(to, `Добро пожаловать в ${this.serviceName}!`, html);
     } catch (error) {
       this.logger.warn(
         `Не удалось отправить приветственное письмо на ${to}: ${
@@ -128,13 +118,7 @@ export class MailService {
         resetUrl: `${this.frontendUrl}/reset-password?token=${token}`,
         token,
       });
-      const transporter = await this.createTransporter();
-      await transporter.sendMail({
-        from: this.from,
-        to,
-        subject: `Сброс пароля в ${this.serviceName}`,
-        html,
-      });
+      await this.send(to, `Сброс пароля в ${this.serviceName}`, html);
     } catch (error) {
       this.logger.warn(
         `Не удалось отправить письмо сброса пароля на ${to}: ${

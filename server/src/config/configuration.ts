@@ -15,11 +15,10 @@ export interface AppConfig {
     expiresIn: string;
   };
   mail: {
-    smtpHost: string;
-    smtpPort: number;
-    smtpUser: string;
-    smtpPass: string;
-    from: string;
+    unisenderApiKey: string;
+    unisenderListId: string;
+    senderEmail: string;
+    senderName: string;
   };
 }
 
@@ -42,12 +41,14 @@ export default (): AppConfig => ({
     expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   },
   mail: {
-    // SMTP-порты (465/587) заблокированы на бесплатном плане Render — на
-    // платном (Starter и выше) они открыты, см. changelog Render.
-    smtpHost: process.env.SMTP_HOST ?? 'smtp.gmail.com',
-    smtpPort: parseInt(process.env.SMTP_PORT ?? '587', 10),
-    smtpUser: process.env.SMTP_USER ?? '',
-    smtpPass: process.env.SMTP_PASS ?? '',
-    from: process.env.MAIL_FROM ?? 'Nova <no-reply@example.com>',
+    // Письма отправляются через HTTP API UniSender (не SMTP): SMTP-порты
+    // блокированы почти на всех бюджетных хостингах (проверено на Render
+    // и на VPS NetAngels) — HTTPS-запросы к API такие блокировки не встречают.
+    // sender_email должен быть подтверждённым отправителем на домене,
+    // верифицированном в UniSender (см. server/.env.example).
+    unisenderApiKey: process.env.UNISENDER_API_KEY ?? '',
+    unisenderListId: process.env.UNISENDER_LIST_ID ?? '',
+    senderEmail: process.env.SENDER_EMAIL ?? 'no-reply@example.com',
+    senderName: process.env.SENDER_NAME ?? 'Nova',
   },
 });
