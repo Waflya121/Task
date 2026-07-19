@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -9,12 +10,17 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService<AppConfig, true>);
 
   const port = configService.get('port', { infer: true });
   const frontendUrl = configService.get('frontendUrl', { infer: true });
   const serviceName = configService.get('serviceName', { infer: true });
+
+  // За реверс-прокси (Nginx на том же хосте) доверяем первому хопу, иначе
+  // Express видит все запросы как идущие с 127.0.0.1, и rate-limiting
+  // (ThrottlerGuard) считает всех пользователей одним IP.
+  app.set('trust proxy', 1);
 
   // Безопасные HTTP-заголовки.
   app.use(helmet());
