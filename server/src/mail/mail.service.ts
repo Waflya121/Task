@@ -25,6 +25,10 @@ export class MailService {
       // На relay-сервере NetAngels для VDS "Старт" (skvmrelay.netangels.ru)
       // авторизация не требуется — доступ разрешён по IP клиентского VDS.
       auth: mail.smtpUser ? { user: mail.smtpUser, pass: mail.smtpPass } : undefined,
+      // Relay использует самоподписанный сертификат для STARTTLS — это
+      // доверенный внутренний сервер провайдера (доступ по IP), строгая
+      // проверка цепочки сертификата тут не нужна и не пройдёт.
+      tls: { rejectUnauthorized: false },
       connectionTimeout: 30_000,
       greetingTimeout: 20_000,
       socketTimeout: 30_000,
