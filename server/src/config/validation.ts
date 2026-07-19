@@ -18,10 +18,12 @@ export const validationSchema = Joi.object({
   JWT_SECRET: Joi.string().min(8).required(),
   JWT_EXPIRES_IN: Joi.string().default('7d'),
 
-  // UniSender HTTP API вместо SMTP — SMTP-порты блокированы почти на всех
-  // бюджетных хостингах, HTTPS-запросы к API такие блокировки не встречают.
-  UNISENDER_API_KEY: Joi.string().required(),
-  UNISENDER_LIST_ID: Joi.string().required(),
-  SENDER_EMAIL: Joi.string().email().default('no-reply@example.com'),
-  SENDER_NAME: Joi.string().default('Nova'),
+  // SMTP через relay NetAngels (skvmrelay.netangels.ru) — на VDS "Старт"
+  // прямые исходящие SMTP-порты заблокированы, но этот relay-сервер
+  // разрешён самим хостером именно для таких случаев.
+  SMTP_HOST: Joi.string().required(),
+  SMTP_PORT: Joi.number().default(25),
+  SMTP_USER: Joi.string().allow('').default(''),
+  SMTP_PASS: Joi.string().allow('').default(''),
+  MAIL_FROM: Joi.string().default('Nova <noreply@nova1-app.ru>'),
 });

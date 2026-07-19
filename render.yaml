@@ -9,7 +9,10 @@ services:
   - type: web
     name: nova-server
     runtime: node
-    plan: free
+    # Starter (платный, от $7/мес) — на бесплатном плане Render блокирует
+    # исходящие SMTP-порты (465/587), из-за чего письма не отправляются.
+    # См. https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports
+    plan: starter
     rootDir: server
     # --include=dev обязателен: Render выставляет NODE_ENV=production при сборке,
     # а без этого флага npm install пропустит devDependencies (typescript,
@@ -49,16 +52,16 @@ services:
       # URL фронтенда станет известен только после его собственного деплоя.
       - key: FRONTEND_URL
         sync: false
-      # UniSender HTTP API вместо SMTP — работает на любом хостинге, включая
-      # бесплатный план Render (SMTP-порты там заблокированы, HTTPS — нет).
-      - key: UNISENDER_API_KEY
+      - key: SMTP_HOST
         sync: false
-      - key: UNISENDER_LIST_ID
+      - key: SMTP_PORT
         sync: false
-      - key: SENDER_EMAIL
+      - key: SMTP_USER
         sync: false
-      - key: SENDER_NAME
-        value: Nova
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
 
   # --- Frontend: статическая сборка Vite ---
   - type: web

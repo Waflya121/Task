@@ -15,10 +15,11 @@ export interface AppConfig {
     expiresIn: string;
   };
   mail: {
-    unisenderApiKey: string;
-    unisenderListId: string;
-    senderEmail: string;
-    senderName: string;
+    smtpHost: string;
+    smtpPort: number;
+    smtpUser: string;
+    smtpPass: string;
+    from: string;
   };
 }
 
@@ -41,14 +42,13 @@ export default (): AppConfig => ({
     expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   },
   mail: {
-    // Письма отправляются через HTTP API UniSender (не SMTP): SMTP-порты
-    // блокированы почти на всех бюджетных хостингах (проверено на Render
-    // и на VPS NetAngels) — HTTPS-запросы к API такие блокировки не встречают.
-    // sender_email должен быть подтверждённым отправителем на домене,
-    // верифицированном в UniSender (см. server/.env.example).
-    unisenderApiKey: process.env.UNISENDER_API_KEY ?? '',
-    unisenderListId: process.env.UNISENDER_LIST_ID ?? '',
-    senderEmail: process.env.SENDER_EMAIL ?? 'no-reply@example.com',
-    senderName: process.env.SENDER_NAME ?? 'Nova',
+    // По умолчанию — relay NetAngels для VDS "Старт" (skvmrelay.netangels.ru,
+    // порт 25, без авторизации, доступ разрешён по IP клиентского VDS) —
+    // обходит блокировку прямых исходящих SMTP-портов на этом тарифе.
+    smtpHost: process.env.SMTP_HOST ?? 'skvmrelay.netangels.ru',
+    smtpPort: parseInt(process.env.SMTP_PORT ?? '25', 10),
+    smtpUser: process.env.SMTP_USER ?? '',
+    smtpPass: process.env.SMTP_PASS ?? '',
+    from: process.env.MAIL_FROM ?? 'Nova <noreply@nova1-app.ru>',
   },
 });
