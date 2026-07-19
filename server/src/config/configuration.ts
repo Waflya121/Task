@@ -42,6 +42,8 @@ export default (): AppConfig => ({
     expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   },
   mail: {
+    // SMTP-порты (465/587) заблокированы на бесплатном плане Render — на
+    // платном (Starter и выше) они открыты, см. changelog Render.
     smtpHost: process.env.SMTP_HOST ?? 'smtp.gmail.com',
     smtpPort: parseInt(process.env.SMTP_PORT ?? '587', 10),
     smtpUser: process.env.SMTP_USER ?? '',
